@@ -1,0 +1,127 @@
+
+# Crear base de api:
+dotnet new webapi -n API
+
+# Crear las librerías para las capas:
+dotnet new classlib -n Application
+dotnet new classlib -n Domain
+dotnet new classlib -n Persistence
+
+# Añadir las referencias de la arquitectura:
+dotnet add API reference Application
+dotnet add Application reference Domain Persistence
+dotnet add Persistence reference Domain
+
+# Borrar las clases vacías que se crean de ejemplo, usando bash:
+rm ./*/Class1*
+
+# Crear la solución para agrupar los proyectos:
++ Tomará el nombre de la carpeta":
+dotnet new sln
++ ó asignar nombre manual:
+dotnet new sln -n API
+
+# Añadir las capas al proyecto:
+dotnet sln add API Application Domain Persistence
+
+# Info opcional - probar la ejecución del proyecto:
+dotnet run --project ./API
+
+# Añadir la conexión a la bd en el archivo appsettings.json o el de desarrollo en API:
+,
+"ConnectionStrings": {
+  "MySqlConnection": "server=localhost;user=su_usuario;password=1234;database=su_bd;"
+}
+
+
+# Comentar todos los <Nullable>enable</Nullable> en los .csproj de las 4 capas.
+
+### Añadir paquetes:
+
+### Paquetes para API:
+dotnet add API package Microsoft.EntityFrameworkCore.Design --version 7.0.10
+dotnet add API package AutoMapper.Extensions.Microsoft.DependencyInjection --version 12.0.1
+
+
+### Paquetes para Persistence:
+#dotnet add Persistence package Microsoft.EntityFrameworkCore --version 7.0.10
+dotnet add Persistence package Pomelo.EntityFrameworkCore.Mysql --version 7.0.0
+
+
+
+
+
+###=== USANDO DBFIRST ===###:
+
+# Ejecutar el siguiente comando generará el APIContext con las configuraciones y entidades,
+# luego hay que separarlas en sus respectivas capas:
+dotnet ef dbcontext scaffold "server=localhost;user=su_usuario;password=1234;database=su_bd" Pomelo.EntityFrameworkCore.MySql -s API -p Persistence --context APIContext --context-dir Data --output-dir ../Domain/Entities --namespace Domain.Entities
+
+@ NOTA PAQUETE:
++ Se requiere el paquete Microsoft.EntityFrameworkCore.Design en API, 
+para el Entity Framework Core Tools.
+
++ Se requiere el paquete Pomelo.EntityFrameworkCore.Mysql 
+para la base de datos mysql y hacer el volcado a C#.
+@.
+
+Una vez generado, pasar las configuraciones en APIContext (dentro de los métodos
+"modelBuilder.builder<Cliente>(builder =>{...}") a su respectivo
+archivo "EntidadConfiguration.cs" dentro del método Configure.
+Nota: en APIContext se recomienda de una vez reemplazar el texto "entity" por "builder".
+
+# Se crea BaseEntity con solo la propiedad id tipo int y luego las demás heredan de esta
+
+###=== FIN USANDO DBFIRST ===###:
+
+#===
+# Crear el APIContext.cs que usa DbContext, incluya los DbSet<Entidad> ya que estos los usa los Repository, y que contenga el método OnModelCreating para las Configurations:
+protected override void OnModelCreating( ModelBuilder modelBuilder)
+{
+		base.OnModelCreating(modelBuilder);
+		modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+}
+y en el contenedor de dependencias Program.cs añadir la dependencia:
+builder.Services.AddDbContext<PetshopContext>(options =>
+{
+    string connectionString = builder.Configuration.GetConnectionString("MySqlConnection");
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+});
+
+NOTA: LAS INYECCIONES DE DEPENDENCIAS METERLAS DESPUÉS DE:
+builder.Services.AddSwaggerGen();
+Y ANTES DE:
+var app = builder.Build();
+#===
+
+
+###=== USANDO CODEFIRST ===###:
+
+# Se crea BaseEntity con solo la propiedad id tipo int y luego las demás heredan de esta
+Crear entidades:
+mkdir ./Domain/Entities/
+
+#!!! Tablas intermedias sin campos no se les crea Configuraciones ni interfaz, ni en IUnitOfWork, etc, solo en el dbcontext y entidades.
+Crear Configuraciones, se crea este requiere los paquetes Microsoft.EntityFrameworkCore y Pomelo.EntityFrameworkCore.Mysql, se mapea nombre de tabla, campos y relaciones solo de fks a excepcion de relación uno a uno:
+mkdir ./Persistence/Configuration/
+tip: abrir entidad para ver sus información y mappear rápido.
+
++ aquí ya se puede migrar:
+verificar si existe la herramienta de migraciones EF: dotnet tool list -g
+instalarla: dotnet tool install --global dotnet-ef
+
+crear migración (se requiere el paquete Microsoft.EntityFrameworkCore.Design en API ): 
+dotnet ef migrations add migracionInicial --project ./Persistence --startup-project ./ApiPetshop --output-dir ./Data/Migrations
+
+Ejecutar migración a la bd:
+dotnet ef database update --project ./Persistence --startup-project ./ApiPetshop
+
+###=== FIN USANDO CODEFIRST ===###:
+
+
+
+
+
+
+
+
